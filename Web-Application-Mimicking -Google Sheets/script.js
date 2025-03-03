@@ -7,12 +7,13 @@ const initialCellState = {
     isUnderlined: false,
     color: '#000000',
     backgroundColor: '#ffffff',
-    content: ''
+    content: '',
+    formula: ''
 };
 
 let sheetsArray = [];
 let activeSheetIndex = -1;
-let activeSheetObject = false;
+let activeSheetObject = {};
 let activeCell = false;
 
 // Functionality elements
@@ -27,7 +28,7 @@ let rightBtn = document.querySelector('.end');
 let colorBtn = document.querySelector('#color');
 let bgColorBtn = document.querySelector('#bgcolor');
 let addressBar = document.querySelector('.address-bar');
-let formula = document.querySelector('.formula-bar');
+let formulaBar = document.querySelector('.formula-bar');
 let downloadBtn = document.querySelector(".download");
 let openBtn = document.querySelector(".open");
 let addColBtn = document.querySelector("#addColBtn");
@@ -76,89 +77,8 @@ for (let i = 1; i <= 100; i++) {
         cell.addEventListener('input', cellInput);
 
         newRow.append(cell);
+        activeSheetObject[cell.id] = { ...initialCellState };
     }
-}
-
-function cellFocus(event) {
-    let key = event.target.id;
-    addressBar.innerHTML = event.target.id;
-    activeCell = event.target;
-
-    let activeBg = '#c9c8c8';
-    let inactiveBg = '#ecf0f1';
-
-    fontFamilyBtn.value = activeSheetObject[key].fontFamily_data;
-    fontSizeBtn.value = activeSheetObject[key].fontSize_data;
-    boldBtn.style.backgroundColor = activeSheetObject[key].isBold ? activeBg : inactiveBg;
-    italicBtn.style.backgroundColor = activeSheetObject[key].isItalic ? activeBg : inactiveBg;
-    underlineBtn.style.backgroundColor = activeSheetObject[key].isUnderlined ? activeBg : inactiveBg;
-    setAlignmentBg(key, activeBg, inactiveBg);
-    colorBtn.value = activeSheetObject[key].color;
-    bgColorBtn.value = activeSheetObject[key].backgroundColor;
-
-    formula.value = activeCell.innerText;
-
-    document.getElementById(event.target.id.slice(0, 1)).classList.add('row-col-focus');
-    document.getElementById(event.target.id.slice(1)).classList.add('row-col-focus');
-}
-
-function cellInput(event) {
-    let key = activeCell.id;
-    validateInput(activeCell); // Validate input before saving
-    formula.value = activeCell.innerText;
-    activeSheetObject[key].content = activeCell.innerText;
-
-    // Update dependencies
-    updateDependencies(key);
-
-    // Move the cursor to the end of the cell's content
-    moveCursorToEnd(activeCell);
-}
-
-// Function to move the cursor to the end of the content
-function moveCursorToEnd(cell) {
-    const range = document.createRange();
-    const selection = window.getSelection();
-    range.selectNodeContents(cell);
-    range.collapse(false); // Move the cursor to the end
-    selection.removeAllRanges();
-    selection.addRange(range);
-}
-
-function setAlignmentBg(key, activeBg, inactiveBg) {
-    leftBtn.style.backgroundColor = inactiveBg;
-    centerBtn.style.backgroundColor = inactiveBg;
-    rightBtn.style.backgroundColor = inactiveBg;
-    if (key) {
-        document.querySelector('.' + activeSheetObject[key].textAlign).style.backgroundColor = activeBg;
-    } else {
-        leftBtn.style.backgroundColor = activeBg;
-    }
-}
-
-function cellFocusOut(event) {
-    document.getElementById(event.target.id.slice(0, 1)).classList.remove('row-col-focus');
-    document.getElementById(event.target.id.slice(1)).classList.remove('row-col-focus');
-}
-
-// Function to validate input
-function validateInput(cell) {
-    const value = cell.innerText.trim();
-
-    // Validate numeric input
-    if (!isNaN(value)) {
-        cell.innerText = parseFloat(value).toString(); // Ensure numeric format
-        return;
-    }
-
-    // Validate date input
-    const date = Date.parse(value);
-    if (!isNaN(date)) {
-        cell.innerText = new Date(date).toLocaleDateString(); // Convert to localized date format
-        return;
-    }
-
-    // If it's not a number or date, leave it as text
 }
 
 // Drag functionality
@@ -209,9 +129,106 @@ function handleDrag(startCell, endCell) {
             if (cell) {
                 cell.innerText = startCell.innerText;
                 activeSheetObject[cellId].content = startCell.innerText;
+
+                // If the dragged content is a formula, evaluate it
+                if (startCell.innerText.startsWith('=')) {
+                    activeSheetObject[cellId].formula = startCell.innerText;
+                    evaluateFormula(cell);
+                } else {
+                    activeSheetObject[cellId].formula = '';
+                }
             }
         }
     }
+}
+
+function cellFocus(event) {
+    let key = event.target.id;
+    addressBar.innerHTML = event.target.id;
+    activeCell = event.target;
+
+    let activeBg = '#c9c8c8';
+    let inactiveBg = '#ecf0f1';
+
+    fontFamilyBtn.value = activeSheetObject[key].fontFamily_data;
+    fontSizeBtn.value = activeSheetObject[key].fontSize_data;
+    boldBtn.style.backgroundColor = activeSheetObject[key].isBold ? activeBg : inactiveBg;
+    italicBtn.style.backgroundColor = activeSheetObject[key].isItalic ? activeBg : inactiveBg;
+    underlineBtn.style.backgroundColor = activeSheetObject[key].isUnderlined ? activeBg : inactiveBg;
+    setAlignmentBg(key, activeBg, inactiveBg);
+    colorBtn.value = activeSheetObject[key].color;
+    bgColorBtn.value = activeSheetObject[key].backgroundColor;
+
+    formulaBar.value = activeSheetObject[key].formula || activeCell.innerText;
+
+    document.getElementById(event.target.id.slice(0, 1)).classList.add('row-col-focus');
+    document.getElementById(event.target.id.slice(1)).classList.add('row-col-focus');
+}
+
+function cellInput(event) {
+    let key = activeCell.id;
+    let inputValue = activeCell.innerText.trim();
+
+    // Check if the input is a formula
+    if (inputValue.startsWith('=')) {
+        activeSheetObject[key].formula = inputValue;
+        evaluateFormula(activeCell);
+    } else {
+        activeSheetObject[key].content = inputValue;
+        activeSheetObject[key].formula = '';
+    }
+
+    formulaBar.value = activeSheetObject[key].formula || activeCell.innerText;
+
+    // Update dependencies
+    updateDependencies(key);
+
+    // Move the cursor to the end of the cell's content
+    moveCursorToEnd(activeCell);
+}
+
+function moveCursorToEnd(cell) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+    range.selectNodeContents(cell);
+    range.collapse(false); // Move the cursor to the end
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+function setAlignmentBg(key, activeBg, inactiveBg) {
+    leftBtn.style.backgroundColor = inactiveBg;
+    centerBtn.style.backgroundColor = inactiveBg;
+    rightBtn.style.backgroundColor = inactiveBg;
+    if (key) {
+        document.querySelector('.' + activeSheetObject[key].textAlign).style.backgroundColor = activeBg;
+    } else {
+        leftBtn.style.backgroundColor = activeBg;
+    }
+}
+
+function cellFocusOut(event) {
+    document.getElementById(event.target.id.slice(0, 1)).classList.remove('row-col-focus');
+    document.getElementById(event.target.id.slice(1)).classList.remove('row-col-focus');
+}
+
+function validateInput(cell) {
+    const value = cell.innerText.trim();
+
+    // Validate numeric input
+    if (!isNaN(value)) {
+        cell.innerText = parseFloat(value).toString(); // Ensure numeric format
+        return;
+    }
+
+    // Validate date input
+    const date = Date.parse(value);
+    if (!isNaN(date)) {
+        cell.innerText = new Date(date).toLocaleDateString(); // Convert to localized date format
+        return;
+    }
+
+    // If it's not a number or date, leave it as text
 }
 
 // Dependency graph
@@ -234,41 +251,52 @@ function evaluateFormula(cell) {
     if (formulaText.startsWith('=')) {
         const formula = formulaText.slice(1).trim();
 
-        // Handle IF statements
-        const ifMatch = formula.match(/IF\((.*),(.*),(.*)\)/i);
-        if (ifMatch) {
-            const [_, condition, trueValue, falseValue] = ifMatch;
-            try {
-                const conditionResult = eval(condition); // Evaluate the condition
-                cell.innerText = conditionResult ? trueValue : falseValue;
-            } catch (e) {
-                cell.innerText = '#ERROR';
+        // Handle TRIM
+        if (formula.startsWith('TRIM(')) {
+            const text = formula.match(/TRIM\((.*)\)/i)?.[1];
+            if (text) {
+                cell.innerText = text.trim();
+                return;
             }
-            return;
         }
 
-        // Handle VLOOKUP
-        const vlookupMatch = formula.match(/VLOOKUP\("(.*)","(.*)",(\d+)\)/i);
-        if (vlookupMatch) {
-            const [_, lookupValue, range, colIndex] = vlookupMatch;
-            try {
-                cell.innerText = handleVLookup(lookupValue, range, parseInt(colIndex));
-            } catch (e) {
-                cell.innerText = '#ERROR';
+        // Handle UPPER
+        if (formula.startsWith('UPPER(')) {
+            const text = formula.match(/UPPER\((.*)\)/i)?.[1];
+            if (text) {
+                cell.innerText = text.toUpperCase();
+                return;
             }
-            return;
         }
 
-        // Handle CONCATENATE
-        const concatMatch = formula.match(/CONCATENATE\((.*)\)/i);
-        if (concatMatch) {
-            const args = concatMatch[1].split(',').map(arg => arg.trim().replace(/"/g, ''));
-            try {
-                cell.innerText = handleConcatenate(...args);
-            } catch (e) {
-                cell.innerText = '#ERROR';
+        // Handle LOWER
+        if (formula.startsWith('LOWER(')) {
+            const text = formula.match(/LOWER\((.*)\)/i)?.[1];
+            if (text) {
+                cell.innerText = text.toLowerCase();
+                return;
             }
-            return;
+        }
+
+        // Handle FIND_AND_REPLACE
+        if (formula.startsWith('FIND_AND_REPLACE(')) {
+            const args = formula.match(/FIND_AND_REPLACE\((.*),(.*),(.*)\)/i);
+            if (args) {
+                const [_, range, find, replace] = args;
+                const [startCellId, endCellId] = range.split(':');
+                findAndReplace(startCellId, endCellId, find, replace);
+                return;
+            }
+        }
+
+        // Handle REMOVE_DUPLICATES
+        if (formula.startsWith('REMOVE_DUPLICATES(')) {
+            const range = formula.match(/REMOVE_DUPLICATES\((.*):(.*)\)/i);
+            if (range) {
+                const [_, startCellId, endCellId] = range;
+                removeDuplicates(startCellId, endCellId);
+                return;
+            }
         }
 
         // Handle basic math functions (SUM, AVERAGE, MAX, MIN, COUNT)
@@ -310,28 +338,6 @@ function evaluateFormula(cell) {
     }
 }
 
-// Function to resolve cell references
-function resolveReference(cellId, reference) {
-    const isAbsoluteCol = reference.startsWith('$');
-    const isAbsoluteRow = reference.match(/\$\d+/);
-
-    let col = reference.replace(/[^A-Z]/g, '');
-    let row = reference.replace(/\D/g, '');
-
-    if (!isAbsoluteCol) {
-        const currentCol = cellId[0];
-        const currentColCode = currentCol.charCodeAt(0);
-        col = String.fromCharCode(currentColCode + (col.charCodeAt(0) - 65));
-    }
-
-    if (!isAbsoluteRow) {
-        const currentRow = parseInt(cellId.slice(1));
-        row = currentRow + parseInt(row) - 1;
-    }
-
-    return col + row;
-}
-
 // Function to get values from a range
 function getRangeValues(startCellId, endCellId) {
     const values = [];
@@ -352,35 +358,31 @@ function getRangeValues(startCellId, endCellId) {
     return values;
 }
 
-// Function to handle IF statements
-function handleIfStatement(condition, trueValue, falseValue) {
-    return condition ? trueValue : falseValue;
-}
-
-// Function to handle VLOOKUP
-function handleVLookup(lookupValue, range, colIndex) {
-    const [startCellId, endCellId] = range.split(':');
+// Function to find and replace text in a range
+function findAndReplace(startCellId, endCellId, find, replace) {
     const startCol = startCellId[0];
     const startRow = parseInt(startCellId.slice(1));
     const endCol = endCellId[0];
     const endRow = parseInt(endCellId.slice(1));
 
-    for (let row = startRow; row <= endRow; row++) {
-        const lookupCellId = startCol + row;
-        const lookupCell = document.getElementById(lookupCellId);
-        if (lookupCell && lookupCell.innerText === lookupValue) {
-            const resultCellId = String.fromCharCode(startCol.charCodeAt(0) + colIndex - 1) + row;
-            const resultCell = document.getElementById(resultCellId);
-            return resultCell ? resultCell.innerText : '#N/A';
+    for (let col = startCol.charCodeAt(0); col <= endCol.charCodeAt(0); col++) {
+        for (let row = startRow; row <= endRow; row++) {
+            const cellId = String.fromCharCode(col) + row;
+            const cell = document.getElementById(cellId);
+            if (cell) {
+                cell.innerText = cell.innerText.replace(new RegExp(find, 'g'), replace);
+            }
         }
     }
-    return '#N/A';
 }
 
-// Function to handle CONCATENATE
-function handleConcatenate(...args) {
-    return args.join('');
+// Function to remove duplicates from a range
+function removeDuplicates(startCellId, endCellId) {
+    const values = getRangeValues(startCellId, endCellId);
+    const uniqueValues = [...new Set(values)];
+    return uniqueValues;
 }
+
 
 // Function to add a column
 function addColumn() {
